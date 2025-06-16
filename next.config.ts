@@ -3,7 +3,6 @@ import withPWA from "next-pwa";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
 };
 
 export default withPWA({

@@ -1,45 +1,46 @@
 import { useSession } from 'next-auth/react';
 import { useSupabaseAuth } from '@/components/providers/supabase-auth-provider';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export function useAuth() {
   const { data: nextAuthSession, status: nextAuthStatus } = useSession();
-  const { user: supabaseUser, loading: supabaseLoading, signOut } = useSupabaseAuth();
-  const [isReady, setIsReady] = useState(false);
-
-  // Sync loading states
-  const loading = supabaseLoading || nextAuthStatus === 'loading' || !isReady;
+  const { user: supabaseUser, loading: supabaseLoading } = useSupabaseAuth();
 
   // Determine if user is authenticated in both systems
   const isAuthenticated = Boolean(nextAuthSession && supabaseUser);
 
   // Combined user data
-  const user = isAuthenticated ? {
-    ...nextAuthSession?.user,
-    id: supabaseUser?.id,
-    // Add any other user data you need from either system
-  } : null;
+  const user = useMemo(() => {
+    if (!isAuthenticated) return null;
+    return {
+      ...nextAuthSession?.user,
+      id: supabaseUser?.id,
+    };
+  }, [isAuthenticated, nextAuthSession?.user, supabaseUser?.id]);
 
-  // Check for session mismatches
+  // Debug logging
   useEffect(() => {
-    if (!loading) {
-      const hasNextAuth = Boolean(nextAuthSession);
-      const hasSupabase = Boolean(supabaseUser);
-
-      // If sessions are out of sync, sign out from both
-      if (hasNextAuth !== hasSupabase) {
-        console.warn('Session mismatch detected, signing out');
-        signOut();
-      }
-
-      setIsReady(true);
-    }
-  }, [nextAuthSession, supabaseUser, loading, signOut]);
+    console.log('useAuth state:', {
+      isAuthenticated,
+      loading: supabaseLoading,
+      nextAuthStatus,
+      hasNextAuth: !!nextAuthSession,
+      hasSupabase: !!supabaseUser,
+      nextAuthUser: nextAuthSession?.user,
+      supabaseUser,
+      combinedUser: user
+    });
+  }, [isAuthenticated, supabaseLoading, nextAuthStatus, nextAuthSession, supabaseUser, user]);
 
   return {
     user,
-    loading,
+    loading: supabaseLoading,
     isAuthenticated,
-    signOut,
+    nextAuthStatus,
+    hasNextAuth: !!nextAuthSession,
+    hasSupabase: !!supabaseUser,
+    nextAuthUser: nextAuthSession?.user,
+    supabaseUser,
+    combinedUser: user
   };
 }

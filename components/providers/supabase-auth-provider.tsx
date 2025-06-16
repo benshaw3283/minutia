@@ -1,66 +1,86 @@
+'use client';
+
 import { createContext, useContext, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { User } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase';
 
 type SupabaseAuthState = {
-  user: User | null;
+  isAuthenticated: boolean;
   loading: boolean;
-  signOut: () => Promise<void>;
+  user: User | null;
 };
 
-const SupabaseAuthContext = createContext<SupabaseAuthState>({
-  user: null,
+export const SupabaseAuthContext = createContext<SupabaseAuthState>({
+  isAuthenticated: false,
   loading: true,
-  signOut: async () => {},
+  user: null
 });
 
 export function SupabaseAuthProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const syncAuth = async () => {
+      // Clear user if no session
+      if (!session?.user?.email || !session?.user?.id) {
+        setUser(null);
+        return;
+      }
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+      // Only sync if we have a session but no user
+      if (!user) {
+        try {
+          const response = await fetch('/api/auth/supabase-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: session.user.email,
+              userId: session.user.id,
+            }),
+          });
 
-    return () => {
-      subscription.unsubscribe();
+          const data = await response.json();
+          if (!data.error) {
+            setUser(data.user);
+          }
+        } catch (error) {
+          console.error('Error syncing Supabase user:', error);
+        }
+      }
     };
-  }, []);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
+    if (status !== 'loading') {
+      syncAuth();
+    }
+  }, [session, status, user]);
 
-  const value = {
-    user,
-    loading,
-    signOut,
-  };
+  // Debug loading state
+  const isLoading = status === 'loading' || (!!session && !user);
+  console.log('Auth State:', {
+    status,
+    hasSession: !!session,
+    hasUser: !!user,
+    isLoading
+  });
 
   return (
-    <SupabaseAuthContext.Provider value={value}>
+    <SupabaseAuthContext.Provider 
+      value={{ 
+        isAuthenticated: !!session && !!user,
+        loading: isLoading,
+        user
+      }}
+    >
       {children}
     </SupabaseAuthContext.Provider>
   );
 }
 
-export const useSupabaseAuth = () => {
+export function useSupabaseAuth() {
   const context = useContext(SupabaseAuthContext);
   if (!context) {
     throw new Error('useSupabaseAuth must be used within a SupabaseAuthProvider');
   }
   return context;
-};
+}

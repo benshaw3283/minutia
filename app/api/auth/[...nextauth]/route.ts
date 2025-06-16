@@ -4,6 +4,7 @@ import GoogleProvider from "next-auth/providers/google";
 import EmailProvider from "next-auth/providers/email";
 import { Pool } from "pg";
 import PostgresAdapter from "@auth/pg-adapter";
+import { Adapter } from "next-auth/adapters";
 
 // Create PostgreSQL pool
 const pool = new Pool({
@@ -16,8 +17,8 @@ const pool = new Pool({
       : false,
 });
 
-const authOptions: AuthOptions = {
-  adapter: PostgresAdapter(pool) as any, // Type assertion needed due to version mismatch
+export const authOptions: AuthOptions = {
+  adapter: PostgresAdapter(pool) as Adapter,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -40,8 +41,15 @@ const authOptions: AuthOptions = {
     signIn: "/auth/signin",
     verifyRequest: "/auth/verify",
   },
+  callbacks: {
+    async session({ session, user }) {
+      if (session?.user) {
+        session.user.id = user.id;
+      }
+      return session;
+    },
+  },
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };
